@@ -1,0 +1,169 @@
+ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD';
+
+--1
+SELECT imie_wroga AS WROG, opis_incydentu AS PRZEWINA
+FROM Wrogowie_kocurow
+WHERE data_incydentu BETWEEN '2009-01-01' AND '2009-12-31';
+
+--2
+SELECT imie, funkcja, w_stadku_od AS "Z NAMI OD"
+FROM Kocury
+WHERE plec = 'D' AND w_stadku_od BETWEEN '2005-09-01'AND'2007-07-31';
+
+--3
+SELECT imie_wroga AS WROG, gatunek, stopien_wrogosci
+FROM Wrogowie
+WHERE lapowka IS NULL
+ORDER BY stopien_wrogosci ASC;
+
+--4
+SELECT imie || ' zwany ' || pseudo || ' (fun. ' || funkcja || ') lowi myszki w bandzie' 
+|| nr_bandy || ' od ' || w_stadku_od AS "DANE"
+
+FROM Kocury
+WHERE plec = 'M'
+ORDER BY w_stadku_od DESC, pseudo ASC;
+
+--5
+SELECT pseudo,
+REPLACE(REPLACE(pseudo,SUBSTR(pseudo, INSTR(pseudo, 'A'), 1), '#'),
+        SUBSTR(pseudo, INSTR(pseudo, 'L'), 1), '%')
+            AS "Po wymianie A na # oraz L na %"
+            
+FROM Kocury
+WHERE INSTR(pseudo, 'A') > 0 AND INSTR(pseudo, 'L') > 0;
+
+--6
+SELECT imie AS "IMIE", 
+    TO_CHAR(w_stadku_od, 'YYYY-MM-DD') AS "W stadku", 
+    przydzial_myszy AS "Zjadal",
+    ADD_MONTHS(w_stadku_od, 6) AS "Podwyzka", 
+    ROUND(przydzial_myszy * 1.1) AS "Zjada"
+    
+FROM Kocury
+WHERE w_stadku_od <= ADD_MONTHS(DATE '2024-07-17', -15 * 12) 
+    AND EXTRACT(MONTH FROM w_stadku_od) BETWEEN 3 AND 9; 
+
+--7
+SELECT imie AS "IMIE", 
+    ROUND(przydzial_myszy * 3) AS "MYSZY KWARTALNIE", 
+    ROUND(NVL(myszy_extra, 0) * 3) AS "KWARTALNE DODATKI" 
+    
+FROM Kocury
+WHERE (przydzial_myszy > 2 * COALESCE(myszy_extra, 0) OR myszy_extra IS NULL)  
+    AND przydzial_myszy >= 55        
+ORDER BY "KWARTALNE DODATKI" DESC ;
+
+--8
+SELECT imie AS "IMIE",
+    CASE 
+        WHEN ROUND(przydzial_myszy * 12) > 660 THEN TO_CHAR(ROUND(przydzial_myszy * 12))
+        WHEN ROUND(przydzial_myszy * 12) = 660 THEN 'Limit'
+        ELSE 'Ponizej 660'
+    END AS "Zjada rocznie"
+    
+FROM Kocury
+ORDER BY imie;
+
+--9a
+SELECT pseudo AS "PSEUDO",w_stadku_od AS "W STADKU",
+    CASE 
+        WHEN EXTRACT(DAY FROM w_stadku_od) <= 15 THEN 
+            NEXT_DAY(LAST_DAY(DATE '2024-10-29')-7, 'WEDNESDAY')  
+        ELSE 
+            NEXT_DAY(LAST_DAY(ADD_MONTHS(DATE '2024-10-29', 1))-7, 'WEDNESDAY') 
+    END AS "WYPLATA"
+    
+FROM Kocury
+ORDER BY w_stadku_od;
+
+--9b 
+SELECT pseudo AS "PSEUDO",w_stadku_od AS "W STADKU",
+    CASE 
+        WHEN EXTRACT(DAY FROM w_stadku_od) <= 15 THEN 
+            NEXT_DAY(LAST_DAY(DATE '2024-10-31')-7, 'WEDNESDAY')  
+        ELSE 
+            NEXT_DAY(LAST_DAY(ADD_MONTHS(DATE '2024-10-31', 1))-7, 'WEDNESDAY') 
+    END AS "WYPLATA"
+    
+FROM Kocury
+ORDER BY w_stadku_od;
+
+--10 a
+SELECT pseudo AS "PSEUDO",
+    CASE 
+        WHEN COUNT(*) > 1 THEN 'nieunikalny' 
+        ELSE 'Unikalny' 
+    END AS "STATUS"
+    
+FROM Kocury
+GROUP BY pseudo
+ORDER BY pseudo;
+
+--10 b
+SELECT szef AS "SZEF",
+    CASE WHEN COUNT(*) > 1 THEN 'nieunikalny'
+    ELSE 'Unikalny' END AS "STATUS"
+    
+FROM Kocury
+WHERE szef IS NOT NULL
+GROUP BY szef
+ORDER BY szef;
+
+--11
+SELECT pseudo "Pseudonim", COUNT(imie_wroga) "Liczba wrogow"
+FROM wrogowie_kocurow
+GROUP BY pseudo
+HAVING COUNT(pseudo)>=2;
+
+--12 
+SELECT funkcja AS "Funkcja",
+    COUNT(*) AS "Liczba kotow",
+    MAX(przydzial_myszy + NVL(myszy_extra, 0)) AS "Maksymalny przydzial"
+    
+FROM Kocury
+WHERE plec = 'D'  AND funkcja <> 'SZEFUNIA'  
+GROUP BY funkcja
+HAVING AVG(przydzial_myszy + NVL(myszy_extra, 0)) > 50 
+ORDER BY "Liczba kotow" DESC;
+
+--13
+SELECT nr_bandy AS "Nr bandy", 
+    plec AS "Plec", 
+    MIN(przydzial_myszy) AS "Minimalny przydzial"
+    
+FROM Kocury
+GROUP BY nr_bandy, plec;
+
+--14 
+SELECT
+    LEVEL AS Poziom,
+    pseudo AS Pseudonim,
+    funkcja AS Funkcja,
+    nr_bandy AS "Nr bandy"
+    
+FROM Kocury
+WHERE plec = 'M' 
+START WITH funkcja = 'BANDZIOR' AND plec = 'M' 
+CONNECT BY PRIOR pseudo = szef ;
+
+--15
+SELECT LPAD('> ', (LEVEL - 1) * 4, '=') || (LEVEL-1)||' '|| pseudo AS Hierarchia,  --left pad
+    szef AS "Pseudo szefa",
+    funkcja AS "Funkcja"
+    
+FROM Kocury
+WHERE myszy_extra > 0 
+START WITH szef IS NULL
+CONNECT BY PRIOR pseudo = szef;
+
+--16
+SELECT RPAD(' ', 4 * (LEVEL - 1), ' ') || pseudo "Droga sluzbowa" --right pad
+
+FROM Kocury
+CONNECT BY PRIOR szef = pseudo
+START WITH EXTRACT(YEAR FROM w_stadku_od) < EXTRACT(YEAR FROM TO_DATE('2024-07-17')) - 15
+           AND plec = 'M'
+           AND myszy_extra IS NULL;
+           
+
